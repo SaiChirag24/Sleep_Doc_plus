@@ -71,7 +71,7 @@ The Sleep Doc+ system consists of:
 
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/sleep-doc-plus.git
+   git clone https://github.com/SaiChirag24/Sleep_Doc_plus.git
    cd sleep-doc-plus
    ```
 
@@ -88,7 +88,7 @@ The Sleep Doc+ system consists of:
 
 4. Start the system:
    ```
-   python vsd_on_startup.py
+   python gui3.py
    ```
 
 ### Mobile App Setup
