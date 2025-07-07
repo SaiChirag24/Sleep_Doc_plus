@@ -1,0 +1,122 @@
+mmWave Radar Integration (Joybien BM502)
+
+
+Overview
+
+The Sleep Doc system uses the Joybien BM502 mmWave radar sensor for contactless vital signs monitoring, 
+specifically to detect:
+
+>Heart Rate (HR)
+>Breathing Rate (BR)
+
+This sensor is based on the TI IWR6843 or similar platform and provides preprocessed 
+data over UART via custom firmware.
+
+
+Sensor Capabilities
+
+Technology: FMCW mmWave radar
+Detection: 1–2 people in front of the sensor
+Outputs: Heart Rate, Breathing Rate (in BPM)
+Interface: USB-to-UART, default baud rate 921600
+Power: 5V over USB
+
+
+Radar Python Integration
+
+We used Joybien’s Python SDK (based on mmWave ROS driver) to interface with the BM502 in Python. 
+The relevant files used are:
+
+mmWave/vitalsign.py
+
+Parses binary UART packets from BM502
+Performs TLV (Type-Length-Value) unpacking
+Exposes:
+vts.tlvRead(): Reads a full TLV packet
+vts.getHeader(): Gets packet frame header
+Returns:
+vd.heartRateEst_FFT: Estimated HR
+vd.breathingRateEst_FFT: Estimated BR
+
+Usage in project:
+
+from mmWave import vitalsign
+
+data_port = serial.Serial("/dev/ttyUSB0", 921600)
+vts = vitalsign.VitalSign(data_port)
+
+(dck, vd, rangeBuf) = vts.tlvRead(False)
+gv.hr = vd.heartRateEst_FFT
+gv.br = vd.breathingRateEst_FFT
+
+mmWave/uartParser.py (Optional, not directly used)
+
+Contains low-level UART TLV parsing logic
+Used internally by vitalsign.py
+
+
+Required Files for BM502 in Project
+
+| File                          | Purpose                               |
+| ----------------------------- | ------------------------------------- |
+| `mmWave/vitalsign.py`         | Core radar data parsing               |
+| `mmWave/__init__.py`          | Marks the module                      |
+| `vsd_on_startup.py`           | Uses radar via the `vitalsign` module |
+| `/dev/ttyUSB0`                | Serial port connected to radar        |
+| `data_live.csv`               | Live logging of HR/BR and env data    |
+| `Data_collected/vitals_*.csv` | Session logs with radar readings      |
+
+
+Fallback Mechanism
+
+If the radar is disconnected or unavailable, the system:
+Detects the failure using a try/except block during serial port init
+Falls back to generating random fake vitals to keep system responsive
+Still logs data and updates GUI with simulated values
+
+
+try:
+    data_port = serial.Serial("/dev/ttyUSB0", 921600)
+    vts = vitalsign.VitalSign(data_port)
+    radar_available = True
+except Exception as e:
+    radar_available = False
+
+
+Troubleshooting Tips
+
+| Problem            | Cause                              | Fix                                        |
+| ------------------ | ---------------------------------- | ------------------------------------------ |
+| No data from radar | Sensor not connected or wrong port | Reconnect USB, run `dmesg` to confirm port |
+| Data stuck         | Sensor hung or UART buffer full    | Restart Raspberry Pi or power-cycle sensor |
+| Fake vitals shown  | `radar_available = False`          | Check wiring, serial port, or firmware     |
+
+
+Real-time Flow
+
+Radar sends HR/BR every frame (~2s)
+Python script parses via vitalsign.py
+GUI reads /tmp/live_vitals.txt
+App receives JSON via Flask /vitals API
+Data logged to CSV for analysis
+
+
+Download and Integration:
+
+To download the Joybien BM502 mmWave radar SDK (Python driver) from GitHub, use the following command:
+
+git clone https://github.com/bigheadG/mmWave.git
+
+This will download the complete SDK into a folder named mmWave
+
+Then, to use it in your project:
+Copy the mmWave/ folder from the cloned repo into your VSD_GUI directory.
+
+cp -r mmWave /home/raspberry/Desktop/VSD_GUI/
+
+Your vsd_on_startup.py should import it like:
+
+from mmWave import vitalsign
+
+
+Joybien Git Repository: https://github.com/bigheadG/mmWave/tree/master/VSD

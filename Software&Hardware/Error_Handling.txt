@@ -1,0 +1,360 @@
+Sleep Doc – Development Journey & Issue Log
+This section lists the full log of issues encountered while building the Sleep Doc system 
+using mmWave radar, sensors, WS2812 LEDs, a Flutter app, Flask API, and Raspberry Pi 3, 
+along with their causes and solutions.
+
+Hardware Setup Issues
+
+1. Radar Port Not Opening (BM502)
+Issue: Serial port /dev/ttyUSB0 was not opening.
+Cause: Either driver not loaded properly or conflicting processes (like ModemManager).
+Fix:
+Disabled ModemManager
+Ensured dmesg | grep tty showed the device
+Added user to dialout group
+
+2. LED Not Lighting (WS2812 Strip)
+Issue: LEDs did not light up at all.
+Cause: GPIO 18 pin configuration or missing strip.begin()
+Fix:
+Verified LED_PIN = 18 with gpio readall
+Installed rpi_ws281x and tested with a minimal example
+Added strip.begin() before any color update
+
+3. MAX98357A I2S Audio Not Playing
+Issue: No sound through I2S speaker
+Cause: Raspberry Pi config not set for I2S; wrong audio output device
+Fix:
+Enabled I2S overlay in /boot/config.txt
+Used aplay -l to confirm device
+Switched to HDMI/aux temporarily until resolved
+
+4. BME280 Not Detected
+Issue: I2C sensor not showing up
+Cause: I2C disabled by default
+Fix:
+Enabled I2C via raspi-config
+Checked address with i2cdetect -y 1
+Installed smbus2 and bme280 Python libraries
+
+5. APDS9960 Gesture Sensor Errors
+Issue: Crashing on boot or returning None
+Cause: Race condition or I2C not ready
+Fix:
+Moved gesture setup into its own thread
+Added retry logic on I2C init
+
+
+
+Software & System Issues
+
+6. Pi Freezes When Playing Audio
+Cause: Audio buffer conflict when using both pygame and Flask
+Fix: Used minimal pygame.mixer setup, avoided loops in main thread
+
+7. Tkinter GUI Looks Outdated
+Fix: Rewrote the interface using customtkinter with modern layout and PNG icons
+
+8. No Audio Through Aux Port
+Cause: Wrong default audio device
+Fix:
+Used alsamixer, pressed F6, and selected Headphones
+Used amixer cset numid=3 1 to force headphone jack
+
+9. amixer command confusing
+Issue: Wrong syntax for volume or device switching
+Fix: Used:
+
+amixer cset numid=3 1  # 0=auto, 1=headphones, 2=HDMI
+
+
+Flask & API Issues
+
+10. Flask Running in Debug Mode
+Warning: Not suitable for production
+Fix: Launched Flask with debug=False in a daemon thread
+
+11. QR Code Not Scanning in App
+Cause: IP not being dynamically fetched
+Fix: Used socket to fetch local IP and encoded http://<ip>:5000 into QR
+
+
+Flutter App Integration Issues
+
+12. Flutter Build Errors (Namespace not specified)
+Cause: Older plugins or missing namespace in build.gradle
+Fix: Manually added:
+gradle
+namespace 'com.example.sleep_doc_flutter2'
+
+13. Flutter App Not Connecting to Pi
+Cause: Flutter hitting localhost instead of Raspberry Pi IP
+Fix: Used QR-based IP detection and saved IP using SharedPreferences
+
+
+File Sync & Runtime Issues
+
+14. GUI Light Selection Not Applying
+Cause: GUI wrote light_mode as lowercase names (e.g. "love"), but backend expected LIGHT_LOVE
+Fix: Added map_light_name_to_code() to normalize names
+
+15. LED Falls Back to Red Even When GUI Light Set
+Cause: last_light not being updated in polling loop
+Fix: Defined last_light globally and updated only when valid selection detected
+
+
+Python Module & Dependency Issues
+
+16. Missing Modules
+Modules: customtkinter, smbus2, adafruit-apds9960, rpi_ws281x, pygame, flask
+Fix: Installed via:
+pip install customtkinter smbus2 adafruit-circuitpython-apds9960 rpi_ws281x pygame flask qrcode
+
+17. Permissions for Serial and /tmp Writes
+Fix:
+Added script to sudoers if needed
+Used chmod 777 /tmp temporarily during dev
+
+
+Analysis Script Issues
+
+18. analysis.py Crashing on Empty Data
+Cause: Reading data_live.csv before any data is written
+Fix: Skipped empty/invalid rows and added FileNotFoundError catch
+
+
+Summary of Fixes
+
+| Category | Fix Method                              |
+| -------- | --------------------------------------- |
+| Hardware | GPIO config, I2C enable, overlay edits  |
+| Audio    | `amixer`, `alsamixer`, fallback via aux |
+| Software | `try-except`, mock data, threading      |
+| API      | Dynamic IP, JSON validation             |
+| GUI      | `customtkinter`, improved polling       |
+| Analysis | CSV validation and fallback logic       |
+| Flutter  | IP saving, QR scanning, gradle updates  |
+
+
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+------------------------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------------------------
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+Error Handling Summary – Sleep Doc Project (VSD_GUI/)
+
+This document outlines all key try-except blocks, fallbacks, 
+and error-resilient strategies used across the backend, GUI, 
+and analysis parts of the project. These help the system remain 
+stable even if sensors, files, or external APIs fail.
+
+vsd_on_startup.py – Backend Script
+
+Radar Availability
+
+try:
+    data_port = serial.Serial("/dev/ttyUSB0", 921600)
+    vts = vitalsign.VitalSign(data_port)
+    radar_available = True
+except Exception as e:
+    print("❌ Radar not available:", e)
+    radar_available = False
+
+If the BM502 radar is disconnected or fails to initialize, the system switches to fake vitals generation using:
+
+
+def generate_fake_vitals():
+    return {
+        "hr": round(random.uniform(40, 90), 2),
+        "br": round(random.uniform(12, 20), 2)
+    }
+    
+    
+Telegram API Failures
+
+try:
+    requests.post(url, data=data, timeout=2)
+except Exception as e:
+    print("Telegram send error:", e)
+
+Failure to send a Telegram message (e.g., due to no internet) is logged but doesn’t crash the app.
+
+
+Light Setting Errors
+
+try:
+    if light_code in light_colors:
+        ...
+except Exception as e:
+    print(f"Error setting ambient light: {e}")
+
+Prevents crash if light_code is invalid or LED communication fails.
+
+GUI Selection File Load
+
+try:
+    if os.path.exists("/tmp/vsd_selection.json"):
+        ...
+except Exception as e:
+    print(f"Error loading GUI selections: {e}")
+
+Safely ignores corrupted or missing /tmp/vsd_selection.json.
+
+LED Control Runtime
+
+try:
+    ...
+except Exception as e:
+    print(f"LED control error: {e}")
+
+Ensures the LED thread keeps running even if light settings are malformed or unsupported.
+
+
+Log File Creation
+
+try:
+    ...
+except Exception as e:
+    print("Failed to open log file:", e)
+
+If disk or path issues occur when creating the vitals CSV logs, they are caught and logged.
+
+Vitals Fallback (Radar Off)
+
+try:
+    ...
+except Exception:
+    fallback = generate_fake_vitals()
+
+If radar data parsing fails mid-session, it falls back to dummy data without interrupting the process.
+
+
+Real-time Vitals File Write
+
+try:
+    with open("/tmp/live_vitals.txt", "w") as f:
+        ...
+except Exception as e:
+    print("Live update file error:", e)
+
+Ensures that vitals writing to /tmp doesn’t crash the thread if permissions or filesystem errors arise.
+
+
+Environmental Sensor Read Failures
+
+try:
+    ...
+except:
+    pass
+
+BME280 read failures (often due to I2C issues) are ignored silently to keep monitoring going.
+
+
+Flask /control Route
+
+try:
+    ...
+except Exception as e:
+    print(f"Error in /control: {e}")
+    return jsonify({"error": str(e)})
+
+Prevents malformed requests from crashing the server and returns JSON error back to the app.
+
+
+Flask /vitals Route
+
+try:
+    ...
+except Exception as e:
+    print("Vitals read error:", e)
+
+If vitals file is missing or malformed, it responds safely with None values.
+
+Main Loop GUI File Polling
+
+try:
+    ...
+except Exception as e:
+    print("Error polling GUI control file:", e)
+
+Prevents system crash if /tmp/vsd_selection.json becomes unreadable mid-loop.
+
+
+gui3.py – GUI Script
+
+Subprocess Launch
+
+try:
+    subprocess.Popen(...)
+except Exception as e:
+    print("Error launching VSD script:", e)
+
+Handles cases where the backend (vsd_on_startup.py) fails to start from GUI.
+
+
+File Read for Vitals
+
+try:
+    with open(...) as f:
+        ...
+except Exception as e:
+    print("Vitals read error:", e)
+
+Ensures GUI doesn’t crash if data_live.csv or /tmp/live_vitals.txt is empty or corrupt.
+
+
+Analysis Button Click
+
+try:
+    result = subprocess.run(...)
+    ...
+except Exception as e:
+    messagebox.showerror("Error", str(e))
+
+Displays user-friendly error dialog if the analysis script fails to run.
+
+
+analysis.py – Sleep Analysis
+
+CSV Reading and Parsing
+
+try:
+    ...
+    for row in reader:
+        ...
+        try:
+            ...
+        except Exception:
+            continue
+except FileNotFoundError:
+    print("❌ File not found:", file_path)
+    return None
+
+Skips malformed rows silently
+Handles missing file gracefully
+Continues partial file analysis when some rows fail
+
+
+Flutter App (sleep_doc_flutter2/)
+
+Handled via:
+Proper JSON request/response
+Flask side safely ignores malformed input
+Any app-side exceptions during API calls do not break the backend
+
+
+
+Summary
+
+| Component        | Error Type                      | Handling Strategy                          |
+| ---------------- | ------------------------------- | ------------------------------------------ |
+| Radar Missing    | Serial fail                     | Dummy vitals with `generate_fake_vitals()` |
+| LED Failures     | Invalid light code/file         | Printed but ignored                        |
+| File Access      | JSON/CSV not found or corrupted | Caught and fallback/default used           |
+| API Endpoints    | Malformed requests              | Return error JSON safely                   |
+| BME280 Read Fail | I2C/driver issue                | Skipped without error                      |
+| Telegram API     | Internet/network error          | Logged, but continues silently             |
+| Subprocess GUI   | Backend fails to launch         | GUI shows error message                    |
+| Analysis         | CSV data partially corrupt      | Skips broken lines, warns if missing       |
+
