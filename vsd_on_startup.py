@@ -94,8 +94,8 @@ from PIL import Image
 import random
 
 # Telegram
-TELEGRAM_BOT_TOKEN = "7918736860:AAGUtEmEY3-luIokwjsBHCCxqyesdH5IWtM"
-TELEGRAM_CHAT_ID = "7971501223"
+TELEGRAM_BOT_TOKEN = "Your-bot-token"
+TELEGRAM_CHAT_ID = "chat-id"
 
 # Logging
 log_file = None
